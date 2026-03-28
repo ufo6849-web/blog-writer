@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_PATH = BASE_DIR / 'config' / 'engine.json'

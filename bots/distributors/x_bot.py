@@ -16,7 +16,7 @@ import requests
 from dotenv import load_dotenv
 from requests_oauthlib import OAuth1
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 BASE_DIR = Path(__file__).parent.parent.parent
 LOG_DIR = BASE_DIR / 'logs'

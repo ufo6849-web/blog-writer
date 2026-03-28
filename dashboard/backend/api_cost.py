@@ -103,7 +103,7 @@ async def get_subscriptions():
     """구독 정보 + 만료일 계산"""
     import os
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
     subscriptions = []
     for plan in SUBSCRIPTION_PLANS:

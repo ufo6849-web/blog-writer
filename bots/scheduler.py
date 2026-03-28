@@ -27,7 +27,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import anthropic
 import re
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_DIR = BASE_DIR / 'config'
@@ -910,6 +910,141 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"오류가 발생했습니다: {e}")
 
 
+# ─── Shorts Bot 잡 ─────────────────────────────────────
+
+def job_shorts_produce():
+    """쇼츠 생산 (shorts_bot.produce) — 블로그 글 → YouTube Shorts."""
+    sys.path.insert(0, str(BASE_DIR / 'bots'))
+    try:
+        import shorts_bot
+        cfg = shorts_bot._load_config()
+        if not cfg.get('enabled', True):
+            logger.info("Shorts bot disabled in config — 건너뜀")
+            return
+        article = shorts_bot.pick_article(cfg)
+        if not article:
+            logger.info("쇼츠 생산: eligible 글 없음")
+            return
+        result = shorts_bot.produce(article, dry_run=False, cfg=cfg)
+        if result.success:
+            msg = f"🎬 쇼츠 발행 완료: {result.youtube_url}"
+        else:
+            msg = f"⚠️ 쇼츠 생산 실패: {result.error}"
+        logger.info(msg)
+        _telegram_notify(msg)
+    except Exception as e:
+        logger.error(f"쇼츠 잡 오류: {e}")
+        _telegram_notify(f"⚠️ 쇼츠 잡 오류: {e}")
+
+
+# ─── Shorts Telegram 명령 ─────────────────────────────
+
+async def cmd_shorts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /shorts [subcommand] [args]
+    subcommands: status, mode, input, character, upload, skip
+    """
+    sys.path.insert(0, str(BASE_DIR / 'bots'))
+    args = context.args or []
+    sub = args[0].lower() if args else 'status'
+
+    if sub == 'status':
+        import shorts_bot
+        cfg = shorts_bot._load_config()
+        mode = cfg.get('production_mode', 'auto')
+        enabled = cfg.get('enabled', True)
+        converted = len(shorts_bot._get_converted_ids())
+        rendered_dir = DATA_DIR / 'shorts' / 'rendered'
+        rendered = len(list(rendered_dir.glob('*.mp4'))) if rendered_dir.exists() else 0
+        text = (
+            f"🎬 Shorts 현황\n"
+            f"{'🟢 활성' if enabled else '🔴 비활성'} | 모드: {mode}\n"
+            f"변환 완료: {converted}개 | 렌더링 완료: {rendered}개"
+        )
+        await update.message.reply_text(text)
+
+    elif sub == 'mode' and len(args) >= 2:
+        new_mode = 'semi_auto' if args[1] in ('semi', 'semi_auto') else 'auto'
+        cfg_path = BASE_DIR / 'config' / 'shorts_config.json'
+        cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
+        cfg['production_mode'] = new_mode
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
+        await update.message.reply_text(f"✅ Shorts 모드 변경: {new_mode}")
+
+    elif sub == 'input':
+        input_dirs = ['images', 'videos', 'scripts', 'audio']
+        lines = ['📂 input/ 폴더 현황']
+        for d in input_dirs:
+            p = BASE_DIR / 'input' / d
+            files = list(p.glob('*.*')) if p.exists() else []
+            lines.append(f"  {d}/: {len(files)}개")
+        await update.message.reply_text('\n'.join(lines))
+
+    elif sub == 'input' and len(args) >= 2 and args[1] == 'clear':
+        import shutil
+        for d in ['images', 'videos', 'scripts', 'audio']:
+            p = BASE_DIR / 'input' / d
+            if p.exists():
+                for f in p.glob('*.*'):
+                    f.unlink(missing_ok=True)
+        await update.message.reply_text('✅ input/ 폴더 초기화 완료')
+
+    elif sub == 'character' and len(args) >= 2:
+        char = args[1].lower()
+        if char not in ('bao', 'zero'):
+            await update.message.reply_text('캐릭터: bao 또는 zero')
+            return
+        cfg_path = BASE_DIR / 'config' / 'shorts_config.json'
+        cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
+        # 다음 영상에 강제 적용 — corner_character_map 전체를 지정 캐릭터로 덮어씀
+        char_type = 'fourth_path' if char == 'zero' else 'tech_blog'
+        for corner in cfg.get('assets', {}).get('corner_character_map', {}):
+            cfg['assets']['corner_character_map'][corner] = char_type
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
+        await update.message.reply_text(f'✅ 다음 쇼츠 캐릭터: {char} ({"Ø" if char == "zero" else "바오"})')
+
+    elif sub == 'upload' and len(args) >= 2:
+        video_path = ' '.join(args[1:])
+        await update.message.reply_text(f'📤 업로드 중: {video_path}')
+        import shorts_bot
+        result = shorts_bot.upload_existing(video_path)
+        if result.success:
+            await update.message.reply_text(f'✅ 업로드 완료: {result.youtube_url}')
+        else:
+            await update.message.reply_text(f'❌ 업로드 실패: {result.error}')
+
+    elif sub == 'skip' and len(args) >= 2:
+        article_id = args[1]
+        skip_dir = DATA_DIR / 'shorts' / 'published'
+        skip_dir.mkdir(parents=True, exist_ok=True)
+        skip_path = skip_dir / f'skip_{article_id}.json'
+        skip_path.write_text(
+            json.dumps({'article_id': article_id, 'skipped': True,
+                        'time': datetime.now().isoformat()}, ensure_ascii=False),
+            encoding='utf-8',
+        )
+        await update.message.reply_text(f'✅ 쇼츠 건너뜀 등록: {article_id}')
+
+    elif sub == 'run':
+        await update.message.reply_text('🎬 쇼츠 즉시 생산 시작...')
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+        loop.run_in_executor(None, job_shorts_produce)
+
+    else:
+        help_text = (
+            "🎬 /shorts 명령어\n"
+            "/shorts status — 현황\n"
+            "/shorts mode auto|semi — 모드 전환\n"
+            "/shorts input — input/ 폴더 현황\n"
+            "/shorts character bao|zero — 캐릭터 강제 지정\n"
+            "/shorts upload [경로] — 렌더링된 영상 업로드\n"
+            "/shorts skip [article_id] — 특정 글 쇼츠 제외\n"
+            "/shorts run — 즉시 실행"
+        )
+        await update.message.reply_text(help_text)
+
+
 # ─── 스케줄러 설정 + 메인 ─────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -962,7 +1097,22 @@ def setup_scheduler() -> AsyncIOScheduler:
                       day_of_week='mon,thu', hour=9, minute=0, id='novel_pipeline')
     logger.info("소설 파이프라인: 매주 월/목 09:00 등록")
 
-    logger.info("스케줄러 설정 완료 (v3 시차 배포 + 소설 파이프라인)")
+    # Shorts Bot: 10:35 (첫 번째), 16:00 (두 번째)
+    try:
+        import json as _json
+        shorts_cfg_path = CONFIG_DIR / 'shorts_config.json'
+        if shorts_cfg_path.exists():
+            _shorts_cfg = _json.loads(shorts_cfg_path.read_text(encoding='utf-8'))
+            if _shorts_cfg.get('enabled', True):
+                scheduler.add_job(job_shorts_produce, 'cron',
+                                  hour=10, minute=35, id='shorts_produce_1')    # 10:35 첫 번째 쇼츠
+                scheduler.add_job(job_shorts_produce, 'cron',
+                                  hour=16, minute=0, id='shorts_produce_2')     # 16:00 두 번째 쇼츠
+                logger.info("Shorts Bot: 10:35, 16:00 등록")
+    except Exception as _e:
+        logger.warning(f"Shorts 스케줄 등록 실패: {_e}")
+
+    logger.info("스케줄러 설정 완료 (v3 시차 배포 + 소설 파이프라인 + Shorts Bot)")
     return scheduler
 
 
@@ -993,6 +1143,9 @@ async def main():
         app.add_handler(CommandHandler('novel_list', cmd_novel_list))
         app.add_handler(CommandHandler('novel_gen', cmd_novel_gen))
         app.add_handler(CommandHandler('novel_status', cmd_novel_status))
+
+        # Shorts Bot
+        app.add_handler(CommandHandler('shorts', cmd_shorts))
 
         # 이미지 파일 수신
         app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

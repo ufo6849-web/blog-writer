@@ -44,6 +44,27 @@ if not exist data\assist\inbox mkdir data\assist\inbox
 if not exist data\novels mkdir data\novels
 if not exist logs mkdir logs
 if not exist config\novels mkdir config\novels
+if not exist data\shorts mkdir data\shorts
+if not exist data\shorts\scripts mkdir data\shorts\scripts
+if not exist data\shorts\clips mkdir data\shorts\clips
+if not exist data\shorts\tts mkdir data\shorts\tts
+if not exist data\shorts\captions mkdir data\shorts\captions
+if not exist data\shorts\rendered mkdir data\shorts\rendered
+if not exist data\shorts\published mkdir data\shorts\published
+if not exist assets\characters\zero\expressions mkdir assets\characters\zero\expressions
+if not exist assets\characters\zero\poses mkdir assets\characters\zero\poses
+if not exist assets\characters\bao\expressions mkdir assets\characters\bao\expressions
+if not exist assets\characters\bao\poses mkdir assets\characters\bao\poses
+if not exist assets\characters\bao\scarves mkdir assets\characters\bao\scarves
+if not exist assets\backgrounds\fourth_path mkdir assets\backgrounds\fourth_path
+if not exist assets\backgrounds\tech_blog mkdir assets\backgrounds\tech_blog
+if not exist assets\bgm mkdir assets\bgm
+if not exist input\images mkdir input\images
+if not exist input\videos mkdir input\videos
+if not exist input\scripts mkdir input\scripts
+if not exist input\audio mkdir input\audio
+if not exist input\_processed mkdir input\_processed
+if not exist templates\shorts mkdir templates\shorts
 
 REM Download fonts (Noto Sans KR for card/shorts converter)
 echo [INFO] Downloading fonts...

@@ -1,721 +1,439 @@
-# 블로그 자동 수익 엔진 v3
+# 블로그 자동 수익 엔진 v3.2
 
-**The 4th Path — Independent Tech Media** | by [22B Labs](https://github.com/sinmb79)
+**The 4th Path** — AI 기반 1인 미디어 자동화 엔진
 
-원고 하나를 AI로 작성하면 블로그, 인스타그램 카드, X 스레드, 유튜브 쇼츠, 주간 뉴스레터 — **5개 포맷으로 자동 변환·배포**하는 1인 미디어 자동화 시스템입니다.
-
-> Python 기반, Windows 미니PC 24시간 운영 최적화.
-> Google Blogger + AdSense + 쿠팡 파트너스 + 멀티플랫폼 수익 구조.
+블로그 글 작성부터 멀티플랫폼 배포, YouTube Shorts 생산까지 완전 자동화.
+Windows 미니PC 24시간 운영을 전제로 설계된 무인 운영 시스템.
 
 ---
 
 ## 목차
 
-- [아키텍처](#아키텍처)
-- [기능 개요](#기능-개요)
-- [프로젝트 구조](#프로젝트-구조)
-- [설치](#설치)
-- [환경 변수 설정](#환경-변수-설정)
-- [Google OAuth 인증](#google-oauth-인증)
-- [실행 방법](#실행-방법)
-- [봇 상세 설명](#봇-상세-설명)
-- [변환 엔진](#변환-엔진-layer-2)
-- [배포 엔진](#배포-엔진-layer-3)
-- [콘텐츠 코너](#콘텐츠-코너)
-- [Telegram 명령어](#telegram-명령어)
-- [OpenClaw AI 에이전트 연동](#openclaw-ai-에이전트-연동)
-- [배포 스케줄](#배포-스케줄)
-- [Phase 현황](#phase-현황)
-- [자주 묻는 질문](#자주-묻는-질문)
-- [기여 가이드](#기여-가이드)
-- [라이선스](#라이선스)
+1. [개요](#개요)
+2. [주요 기능](#주요-기능)
+3. [아키텍처](#아키텍처)
+4. [설치](#설치)
+5. [설정](#설정)
+6. [사용법](#사용법)
+7. [대시보드](#대시보드)
+8. [YouTube Shorts 봇](#youtube-shorts-봇)
+9. [멀티플랫폼 배포](#멀티플랫폼-배포)
+10. [소설 파이프라인](#소설-파이프라인)
+11. [수동 어시스트 모드](#수동-어시스트-모드)
+12. [Telegram 명령어](#telegram-명령어)
+13. [스케줄](#스케줄)
+14. [엔진 추상화](#엔진-추상화)
+15. [개발 현황](#개발-현황)
+
+---
+
+## 개요
+
+이 프로젝트는 **블로그 자동 수익화**를 위한 풀스택 자동화 엔진입니다.
+Google AdSense, 쿠팡 파트너스, YouTube 광고 수익을 동시에 추구하며
+하나의 블로그 글을 인스타그램, X, TikTok, YouTube Shorts 등 멀티플랫폼 콘텐츠로 자동 변환합니다.
+
+### 핵심 설계 원칙
+
+- **무인 운영**: 매일 정해진 시간에 자동 실행, 사람 개입 불필요
+- **AI 엔진 추상화**: OpenClaw(로컬) / Claude / Gemini 중 선택해 글쓰기 엔진 교체 가능
+- **비용 최소화**: 무료 API(Edge TTS, Pexels 등) 우선, 유료는 선택적
+- **Telegram 제어**: 외출 중에도 스마트폰으로 승인/거부/명령 가능
+
+---
+
+## 주요 기능
+
+| 기능 | 설명 |
+|------|------|
+| 트렌드 수집 | Google Trends + RSS 피드 자동 수집, 품질 점수(0-100) 부여 |
+| AI 글쓰기 | LLM으로 Blogger-ready HTML 원고 자동 생성 |
+| 쿠팡 링크 삽입 | 글 주제 키워드 기반 쿠팡 파트너스 링크 자동 삽입 |
+| 블로그 발행 | Blogger API로 자동 발행 + Search Console 색인 요청 |
+| 멀티플랫폼 배포 | 인스타그램 카드/릴스, X 스레드, TikTok, YouTube 자동 배포 |
+| YouTube Shorts | 블로그 글 → TTS + 자막 + 스톡 영상 → Shorts 자동 생산 |
+| 이미지 생성 | DALL-E / 수동 / 요청 모드 선택 가능 |
+| 소설 연재 | 매주 자동 소설 에피소드 생성 + 블로그 발행 |
+| 대시보드 | React + FastAPI 웹 대시보드 (http://localhost:8080) |
+| Telegram 봇 | 명령어로 승인/거부/즉시실행/상태확인 |
 
 ---
 
 ## 아키텍처
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  LAYER 1 — AI 콘텐츠 생성                                    │
-│  OpenClaw (GPT / Claude) → Blogger-ready HTML 원고 1개       │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ article dict
-┌───────────────────────────▼─────────────────────────────────┐
-│  LAYER 2 — 변환 엔진 (Python, AI 없음)                        │
-│                                                             │
-│  blog_converter   card_converter   thread_converter          │
-│  HTML+Schema.org  1080×1080 카드   X 스레드 280자            │
-│                                                             │
-│  shorts_converter          newsletter_converter              │
-│  TTS+ffmpeg 쇼츠 영상       주간 HTML 뉴스레터                │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ 5개 포맷
-┌───────────────────────────▼─────────────────────────────────┐
-│  LAYER 3 — 배포 엔진 (Python, AI 없음)                        │
-│  Blogger  Instagram  X(Twitter)  TikTok  YouTube            │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ 지표
-┌───────────────────────────▼─────────────────────────────────┐
-│  LAYER 4 — 분석 + 피드백                                     │
-│  Google Analytics · Search Console · Telegram 리포트         │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 기능 개요
-
-| 기능 | 설명 | Phase |
-|------|------|-------|
-| 트렌드 수집 | PyTrends + RSS 멀티소스, 품질 점수 70점 미만 자동 폐기 | 1A ✅ |
-| AI 글 작성 | OpenClaw 에이전트 → Blogger-ready HTML 직접 출력 | 1A ✅ |
-| 블로그 발행 | Blogger API + Schema.org JSON-LD + AdSense 플레이스홀더 | 1A ✅ |
-| 쿠팡 파트너스 | 키워드 자동 링크 삽입 | 1A ✅ |
-| 인스타 카드 | Pillow 1080×1080 카드 이미지 생성 + Instagram Graph API | 1B ✅ |
-| X 스레드 | 280자 자동 분할 + X API v2 순차 게시 | 1B ✅ |
-| 유튜브 쇼츠 | TTS + Pillow 슬라이드 + ffmpeg 영상 합성 + YouTube API | 2 ✅ |
-| TikTok | TikTok Content Posting API v2 | 2 ✅ |
-| 주간 뉴스레터 | 주간 HTML 뉴스레터 자동 생성 | 1A ✅ |
-| 분석봇 | GA4 + Search Console + Telegram 일간/주간 리포트 | 1A ✅ |
-| Telegram 제어 | 명령어 + Claude API 자연어 폴백 | 1A ✅ |
-
----
-
-## 프로젝트 구조
-
-```
 blog-writer/
-│
-├── bots/                          # 핵심 봇 모듈
-│   ├── collector_bot.py           # 트렌드 수집 + 품질 필터
-│   ├── publisher_bot.py           # Blogger API 발행
-│   ├── linker_bot.py              # 쿠팡 파트너스 링크 삽입
-│   ├── analytics_bot.py           # 성과 수집 + 리포트
-│   ├── image_bot.py               # 만평 이미지 (manual/request/auto)
-│   ├── article_parser.py          # 원고 포맷 파서
-│   ├── remote_claude.py           # Claude Agent SDK Telegram 연동
-│   ├── scheduler.py               # APScheduler + Telegram 리스너
-│   │
-│   ├── converters/                # LAYER 2 — 변환 엔진
-│   │   ├── blog_converter.py      # HTML 정제 + Schema.org + AdSense
-│   │   ├── card_converter.py      # 인스타 카드 이미지 (Pillow)
-│   │   ├── thread_converter.py    # X 스레드 280자 분할
-│   │   ├── newsletter_converter.py# 주간 뉴스레터 HTML
-│   │   └── shorts_converter.py    # 쇼츠 영상 (TTS + ffmpeg)
-│   │
-│   └── distributors/              # LAYER 3 — 배포 엔진
-│       ├── image_host.py          # ImgBB 업로드 / 로컬 HTTP 서버
-│       ├── instagram_bot.py       # Instagram Graph API
-│       ├── x_bot.py               # X API v2 (OAuth1)
-│       ├── tiktok_bot.py          # TikTok Content Posting API v2
-│       └── youtube_bot.py         # YouTube Data API v3
-│
-├── config/                        # 설정 파일 (비밀값 없음)
-│   ├── platforms.json             # 플랫폼 활성화 여부
-│   ├── schedule.json              # 스케줄 시간 설정
-│   ├── quality_rules.json         # 품질 필터 규칙
-│   ├── safety_keywords.json       # 안전 키워드 목록
-│   ├── sources.json               # RSS 피드 + 트렌드 소스
-│   ├── blogs.json                 # 블로그 설정
-│   └── affiliate_links.json       # 제휴 링크 목록
-│
-├── templates/
-│   └── shorts_template.json       # 쇼츠 코너별 설정 (색상/TTS/트랜지션)
-│
+├── bots/
+│   ├── collector_bot.py       트렌드 수집
+│   ├── writer_bot.py          AI 글쓰기
+│   ├── article_parser.py      원고 파싱
+│   ├── linker_bot.py          쿠팡 링크 삽입
+│   ├── publisher_bot.py       Blogger 발행
+│   ├── image_bot.py           이미지 생성/수신
+│   ├── analytics_bot.py       성과 분석
+│   ├── scheduler.py           스케줄러 + Telegram 리스너
+│   ├── engine_loader.py       AI 엔진 팩토리
+│   ├── assist_bot.py          수동 어시스트 파이프라인
+│   ├── shorts_bot.py          YouTube Shorts 오케스트레이터
+│   ├── converters/            변환 엔진 (blog/card/thread/shorts)
+│   ├── distributors/          배포 엔진 (instagram/x/tiktok/youtube)
+│   ├── novel/                 소설 파이프라인
+│   └── shorts/                Shorts 서브모듈 (7개)
+│       ├── tts_engine.py
+│       ├── script_extractor.py
+│       ├── asset_resolver.py
+│       ├── stock_fetcher.py
+│       ├── caption_renderer.py
+│       ├── video_assembler.py
+│       └── youtube_uploader.py
+├── dashboard/
+│   ├── backend/               FastAPI
+│   └── frontend/              React
+├── config/
+│   ├── engine.json            AI 엔진 선택
+│   └── shorts_config.json     Shorts 파이프라인 설정
+├── templates/                 프롬프트 템플릿
+├── assets/                    캐릭터/배경 이미지 (직접 추가)
+├── input/                     수동 에셋 입력 (semi-auto 모드)
 ├── scripts/
-│   ├── setup.bat                  # Windows 최초 설치 스크립트
-│   ├── get_token.py               # Google OAuth 토큰 발급
-│   └── download_fonts.py          # NotoSansKR / 맑은고딕 설치
-│
-├── assets/
-│   └── fonts/                     # .ttf 파일 (scripts/download_fonts.py로 설치)
-│
-├── data/                          # 런타임 데이터 (.gitignore)
-│   ├── originals/                 # AI 생성 원고
-│   ├── outputs/                   # 변환 결과물 (HTML/PNG/MP4/JSON)
-│   └── ...
-│
-├── logs/                          # 로그 (.gitignore)
-├── .env.example                   # 환경 변수 템플릿
-├── requirements.txt
-└── README.md
+│   ├── setup.bat
+│   ├── get_token.py
+│   └── download_fonts.py
+├── blog.cmd                   Windows 런처
+├── blog_runtime.py
+└── runtime_guard.py
+```
+
+### 4계층 구조
+
+```
+LAYER 1  AI 콘텐츠 생성   OpenClaw / Claude / Gemini
+LAYER 2  변환 엔진        Python (AI 없음)
+LAYER 3  배포 엔진        Python (AI 없음)
+LAYER 4  분석 + 피드백    Python (AI 없음)
 ```
 
 ---
 
 ## 설치
 
-### 사전 요구사항
+### 필수 요구사항
 
-- **Python 3.10 이상** — [python.org](https://www.python.org/downloads/)
-- **ffmpeg** — 쇼츠 영상 생성 필수. [ffmpeg.org](https://ffmpeg.org/download.html)에서 다운로드 후 PATH 추가 또는 `.env`에 `FFMPEG_PATH` 지정
-- Windows 미니PC 권장 (24시간 운영), macOS/Linux도 동작
+- Python 3.11+
+- FFmpeg (https://ffmpeg.org/download.html) — Windows PATH 등록 필요
+- Node.js 18+ (https://nodejs.org/) — 대시보드용
 
-### 1. 저장소 클론
+### 1단계: 저장소 클론
 
 ```bash
 git clone https://github.com/sinmb79/blog-writer.git
 cd blog-writer
 ```
 
-### 2. 가상환경 + 패키지 설치
+### 2단계: 자동 설치
 
-```bash
-# Windows — 자동 설치 (권장)
+```batch
 scripts\setup.bat
-
-# 수동 설치
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS/Linux
-pip install -r requirements.txt
 ```
 
-`setup.bat`이 처리하는 것:
-- Python 가상환경 생성
-- 패키지 설치
-- `.env` 파일 생성 (`.env.example` 복사)
-- `data/`, `logs/` 폴더 생성
-- Windows 작업 스케줄러 자동 시작 등록
+자동 실행 내용:
+- Python venv 생성 + 패키지 설치
+- 데이터/에셋/입력 디렉터리 생성
+- 한글 폰트 다운로드 (Noto Sans KR)
+- Windows 작업 스케줄러 등록
 
-### 3. 폰트 설치
+### 3단계: API 키 설정
 
-카드 이미지·쇼츠 영상의 한글 렌더링에 필요합니다.
+`.env.example`을 참고해 API 키를 입력합니다.
 
 ```bash
-python scripts/download_fonts.py
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REFRESH_TOKEN=   # get_token.py 실행 후 자동 입력
+BLOG_MAIN_ID=           # Blogger 블로그 ID (18자리 숫자)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
-Windows: `맑은고딕(malgunbd.ttf)`을 `assets/fonts/`에 자동 복사
-macOS/Linux: NotoSansKR을 GitHub에서 다운로드
+보안 팁: .env 파일을 프로젝트 폴더 외부(예: D:\key\)에 두고
+`load_dotenv(dotenv_path='D:/key/blog-writer.env')` 형태로 참조하면
+git에 절대 포함되지 않습니다. 이 프로젝트는 이 방식을 기본으로 사용합니다.
 
-### 4. 환경 변수 설정
+### 4단계: Google OAuth 토큰 발급
 
 ```bash
-cp .env.example .env
-# .env 파일을 열어 값 입력
+python scripts/get_token.py
+```
+
+브라우저에서 Google 로그인 후 `token.json`에 자동 저장됩니다.
+YouTube 업로드를 사용하려면 youtube.upload 스코프가 포함되어야 합니다.
+
+### 5단계: 대시보드 프론트엔드 설치
+
+```bash
+cd dashboard/frontend && npm install && cd ../..
 ```
 
 ---
 
-## 환경 변수 설정
+## 설정
 
-`.env.example`을 복사해 `.env`로 저장 후 아래 값을 채웁니다.
-`.env` 파일은 절대 커밋하지 마세요 — `.gitignore`에 포함되어 있습니다.
+### config/engine.json
 
-### Phase 1A — 필수
-
-| 변수 | 설명 | 발급처 |
-|------|------|--------|
-| `GOOGLE_CLIENT_ID` | OAuth 클라이언트 ID | [Google Cloud Console](https://console.cloud.google.com/) |
-| `GOOGLE_CLIENT_SECRET` | OAuth 클라이언트 시크릿 | Google Cloud Console |
-| `GOOGLE_REFRESH_TOKEN` | `scripts/get_token.py` 실행 후 자동 저장 | — |
-| `BLOG_MAIN_ID` | Blogger 블로그 ID | Blogger 대시보드 URL |
-| `TELEGRAM_BOT_TOKEN` | Telegram 봇 토큰 | [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_CHAT_ID` | 내 Telegram 채팅 ID | [@userinfobot](https://t.me/userinfobot) |
-| `COUPANG_ACCESS_KEY` | 쿠팡 파트너스 액세스 키 | [쿠팡 파트너스](https://partners.coupang.com/) |
-| `COUPANG_SECRET_KEY` | 쿠팡 파트너스 시크릿 키 | 쿠팡 파트너스 |
-
-**BLOG_MAIN_ID 확인 방법**
-Blogger 관리자 → 블로그 선택 → 주소창:
-```
-https://www.blogger.com/blog/posts/3856391132195789013
-                                   ↑ 이 숫자
+```json
+{
+  "writing": "openclaw",
+  "tts":     "edge_tts",
+  "image":   "openai",
+  "video":   "local"
+}
 ```
 
-### Phase 1B — 인스타그램 / X
+writing 옵션: openclaw / claude / gemini / gemini_web / openai
 
-| 변수 | 설명 | 발급처 |
-|------|------|--------|
-| `INSTAGRAM_ACCESS_TOKEN` | Instagram Graph API 장기 토큰 | [Facebook Developers](https://developers.facebook.com/) |
-| `INSTAGRAM_ACCOUNT_ID` | Instagram 비즈니스 계정 ID | Facebook Developers |
-| `X_API_KEY` | X API 키 | [X Developer Portal](https://developer.twitter.com/) |
-| `X_API_SECRET` | X API 시크릿 | X Developer Portal |
-| `X_ACCESS_TOKEN` | X 액세스 토큰 | X Developer Portal |
-| `X_ACCESS_SECRET` | X 액세스 시크릿 | X Developer Portal |
-| `IMGBB_API_KEY` | 이미지 공개 URL 변환 (무료) | [ImgBB](https://api.imgbb.com/) |
+### config/shorts_config.json
 
-### Phase 2 — 쇼츠 / TikTok / YouTube
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| enabled | true | Shorts 봇 활성화 |
+| production_mode | "auto" | auto 또는 semi_auto |
+| tts.engine_priority | ["elevenlabs","google_cloud","edge_tts"] | TTS 우선순위 |
+| visuals.source_priority | ["input_dir","character_assets","pexels","pixabay"] | 영상 소스 |
+| youtube.daily_upload_limit | 6 | 하루 최대 업로드 수 |
 
-| 변수 | 설명 | 발급처 |
-|------|------|--------|
-| `GOOGLE_TTS_API_KEY` | Google Cloud TTS REST API | [Google Cloud Console](https://console.cloud.google.com/) |
-| `FFMPEG_PATH` | ffmpeg 경로 (PATH 미등록 시만) | — |
-| `OPENAI_API_KEY` | DALL-E 3 배경 이미지 (선택) | [OpenAI](https://platform.openai.com/) |
-| `TIKTOK_ACCESS_TOKEN` | TikTok Content Posting API | [TikTok Developers](https://developers.tiktok.com/) |
-| `TIKTOK_OPEN_ID` | TikTok 사용자 Open ID | TikTok Developers |
-| `YOUTUBE_CHANNEL_ID` | YouTube 채널 ID | YouTube Studio |
-| `ANTHROPIC_API_KEY` | Telegram 자연어 명령 처리 | [Anthropic Console](https://console.anthropic.com/) |
+---
 
-### 이미지 모드 선택
+## 사용법
 
-```env
-IMAGE_MODE=manual   # (기본) 발행 시 Telegram으로 프롬프트 전송
-IMAGE_MODE=request  # 매주 월요일 프롬프트 목록 일괄 전송
-IMAGE_MODE=auto     # DALL-E 3 자동 생성 (OPENAI_API_KEY 필요)
+### CLI (blog.cmd)
+
+```batch
+blog scheduler          스케줄러 시작 (메인 프로세스)
+blog server             대시보드 서버 시작
+blog status             현재 상태 확인
+blog collect            트렌드 수집 즉시 실행
+blog write              AI 글쓰기 즉시 실행
+blog publish            블로그 발행 즉시 실행
+blog convert            변환 엔진 실행
+blog shorts             Shorts 즉시 생산
+blog shorts --dry-run   업로드 제외 테스트
 ```
 
 ---
 
-## Google OAuth 인증
+## 대시보드
 
-### 1. Google Cloud Console 설정
-
-1. [console.cloud.google.com](https://console.cloud.google.com/) → 새 프로젝트 생성
-2. **API 및 서비스 → 라이브러리** 에서 아래 API 활성화:
-   - `Blogger API v3`
-   - `Google Search Console API`
-   - `YouTube Data API v3` (Phase 2)
-3. **사용자 인증 정보 → OAuth 클라이언트 ID 만들기**
-   - 애플리케이션 유형: **데스크톱 앱**
-4. `credentials.json` 다운로드 → 프로젝트 루트에 저장
-
-### 2. 토큰 발급
-
-```bash
-venv\Scripts\activate
-python scripts\get_token.py
+```batch
+blog server
 ```
 
-브라우저에서 Google 계정 인증 → `token.json` 자동 저장.
-`credentials.json`과 `token.json`은 `.gitignore`에 포함 — 절대 커밋하지 마세요.
+접속: http://localhost:8080
+
+| 탭 | 기능 |
+|----|------|
+| Overview | 오늘 수집/발행/배포 현황 |
+| Content | 글감 목록, 원고 검토, 수동 발행 |
+| 수동모드 | URL 입력 → 커스텀 콘텐츠 반자동 제작 |
+| Analytics | Search Console 성과, 수익 추이 |
+| Novel | 소설 에피소드 관리 |
+| Settings | AI 연결, 배포채널, 품질/스케줄, 비용관리 |
+| Logs | 실시간 로그 조회 |
 
 ---
 
-## 실행 방법
+## YouTube Shorts 봇
 
-### 스케줄러 시작 (권장)
+블로그 글을 15~30초 세로 영상(9:16, 1080x1920)으로 자동 변환합니다.
+FFmpeg만으로 조립하며 CapCut 등 별도 편집 도구가 필요 없습니다.
 
-안전한 기본 진입점은 프로젝트 venv Python + `blog_runtime.py` 입니다.
+### 파이프라인
 
-```bash
-venv\Scripts\python.exe blog_runtime.py scheduler
+```
+블로그 글
+  STEP 0  Asset Resolution    에셋 소스 결정 (auto/semi_auto)
+  STEP 1  Script Extraction   LLM으로 hook/body/closer 추출
+  STEP 2  Visual Sourcing     스톡 영상 수집 + 캐릭터 오버레이
+  STEP 3  TTS Generation      음성 합성 + 단어별 타임스탬프
+  STEP 4  Caption Rendering   ASS 자막 (단어별 노란색 하이라이트)
+  STEP 5  Video Assembly      FFmpeg 조립 + 루프 최적화
+  STEP 6  YouTube Upload      Data API v3 업로드 + AI 공시 레이블
+YouTube Shorts
 ```
 
-백그라운드 실행 (Windows):
-```bash
-venv\Scripts\python.exe blog_runtime.py scheduler
-```
+### 생산 모드
 
-Windows 작업 스케줄러를 통해 PC 시작 시 자동 실행되도록 `setup.bat`이 등록합니다.
-
-### 대시보드 시작
-
-```bash
-venv\Scripts\python.exe blog_runtime.py server
-```
-
-`blog.cmd` 역시 내부적으로 같은 런처를 사용합니다.
-
-### 개별 봇 단독 실행
-
-```bash
-python bots\collector_bot.py        # 트렌드 수집
-python bots\publisher_bot.py        # 블로그 발행
-python bots\analytics_bot.py        # 일간 리포트
-python bots\analytics_bot.py weekly # 주간 리포트
-python bots\image_bot.py batch      # 이미지 프롬프트 배치 전송
-
-# 변환 엔진
-python bots\converters\blog_converter.py
-python bots\converters\card_converter.py
-python bots\converters\shorts_converter.py
-```
-
----
-
-## 봇 상세 설명
-
-### `collector_bot.py` — 트렌드 수집봇
-
-Google Trends (PyTrends) + RSS 피드 (`config/sources.json`)에서 글감을 수집하고 품질 점수를 계산합니다.
-
-**품질 점수 (0–100):**
-- 트렌드 강도, 경쟁 기사 수, 키워드 밀도 반영
-- **70점 미만 자동 폐기**
-- 75점 미만 또는 위험 키워드 감지 시 Telegram 수동 검토 요청
-
-**출력:** `data/collected/{date}_{slug}.json`
-
-### `publisher_bot.py` — 발행봇
-
-- HTML 본문 감지: AI가 HTML을 직접 출력한 경우 변환 없이 Blogger에 발행
-- Schema.org `Article` JSON-LD 삽입
-- Google Search Console URL 즉시 색인 요청
-- 하루 최대 발행 수 제한, 중복 발행 방지
-
-### `linker_bot.py` — 쿠팡 파트너스 링크봇
-
-`config/affiliate_links.json`의 키워드를 HTML 본문에서 찾아 파트너스 링크로 자동 교체.
-같은 키워드는 최대 2회까지만 처리합니다.
-
-### `analytics_bot.py` — 분석봇
-
-- Google Analytics Data API v1 (GA4) + Search Console API
-- 매일 22:00 수집 → Telegram 일간 리포트
-- 매주 일요일 22:30 주간 종합 리포트
-
-### `image_bot.py` — 이미지봇
-
-| 모드 | 동작 |
+| 모드 | 설명 |
 |------|------|
-| `manual` | 발행 시 DALL-E 프롬프트를 Telegram 전송. 직접 생성 후 저장. |
-| `request` | 매주 월요일 프롬프트 목록 전송. 일괄 생성 후 개별 전송. |
-| `auto` | DALL-E 3 API 자동 생성. `OPENAI_API_KEY` 필요, 비용 발생. |
+| auto | 완전 자동, 무인 실행 |
+| semi_auto | input/ 폴더 파일 우선 사용, 없는 항목만 자동 |
 
-### `article_parser.py` — 원고 파서
-
-OpenClaw AI가 출력하는 구조화된 원고를 파싱합니다:
+#### semi_auto 파일 규칙
 
 ```
----TITLE---        글 제목
----META---         검색 설명 150자
----SLUG---         URL 슬러그
----TAGS---         태그 목록
----CORNER---       코너명
----BODY---         Blogger-ready HTML 본문
----KEY_POINTS---   핵심 3줄 (각 30자 이내, SNS/TTS용)
----COUPANG_KEYWORDS--- 쿠팡 검색 키워드
----SOURCES---      출처 URL 목록
----DISCLAIMER---   면책 문구
+input/scripts/{article_id}.json    LLM 건너뜀, 직접 작성한 스크립트
+input/images/{article_id}_1.png    스톡 영상 대신 이미지 사용 (Ken Burns)
+input/videos/{article_id}_1.mp4    스톡 영상 대신 이 클립 사용
+input/audio/{article_id}.wav       TTS 건너뜀, 직접 녹음 음성 사용
 ```
 
-### `remote_claude.py` — Claude Agent SDK 연동
+처리된 파일은 input/_processed/ 로 자동 이동됩니다.
 
-Telegram 자연어 명령을 Claude Agent SDK로 처리합니다.
-코드 생성·수정·실행까지 가능한 자율 에이전트 인터페이스입니다.
+### TTS 엔진
+
+| 순위 | 엔진 | 비용 |
+|------|------|------|
+| 1 | ElevenLabs | 유료 |
+| 2 | Google Cloud TTS Neural2 | 유료 |
+| 3 | Edge TTS ko-KR-SunHiNeural | 무료 |
+
+API 키 없이 Edge TTS로 즉시 사용 가능합니다.
+
+### Shorts CLI
+
+```bash
+python bots/shorts_bot.py                           eligible 글 자동 선택
+python bots/shorts_bot.py --slug my-article         특정 글 지정
+python bots/shorts_bot.py --dry-run                 렌더링만, 업로드 안 함
+python bots/shorts_bot.py --upload path/video.mp4   기존 영상 업로드
+```
 
 ---
 
-## 변환 엔진 (LAYER 2)
+## 멀티플랫폼 배포
 
-### `blog_converter.py`
-
-```
-입력: article dict (body = HTML 또는 Markdown)
-출력: data/outputs/{date}_{slug}_blog.html
-```
-
-- **HTML 자동 감지**: AI가 HTML을 직접 출력한 경우 마크다운 변환을 건너뜀
-- Schema.org `Article` JSON-LD 삽입
-- AdSense 플레이스홀더 삽입 (2번째 H2 뒤, 결론 H2 앞)
-- 쿠팡 파트너스 링크봇 호출
-
-### `card_converter.py`
-
-```
-입력: article dict
-출력: data/outputs/{date}_{slug}_card.png (1080×1080)
-```
-
-Pillow로 인스타그램 카드 이미지를 생성합니다:
-
-```
-┌─────────────────────────┐
-│ ████ 금색 상단 바        │
-│                         │
-│  [코너 배지]             │
-│                         │
-│  글 제목                 │
-│                         │
-│  • 핵심 포인트 1         │
-│  • 핵심 포인트 2         │
-│  • 핵심 포인트 3         │
-│                         │
-│ ████ 금색 하단 바 (URL)  │
-└─────────────────────────┘
-```
-
-코너별 배지 색상: 쉬운세상=파랑, 숨은보물=초록, 바이브리포트=보라, 팩트체크=빨강, 한컷=노랑
-
-### `thread_converter.py`
-
-```
-입력: article dict
-출력: data/outputs/{date}_{slug}_thread.json
-```
-
-- Tweet 1: 제목 + 코너 해시태그
-- Tweet 2–4: 번호 매긴 핵심 포인트
-- 마지막 Tweet: 블로그 URL + CTA
-
-### `newsletter_converter.py`
-
-```python
-generate_weekly(articles: list[dict], urls: list[str] = None) -> str
-```
-
-주간 기사 목록으로 HTML 뉴스레터를 생성합니다.
-**출력:** `data/outputs/weekly_{date}_newsletter.html`
-
-### `shorts_converter.py`
-
-뉴스 앵커 형식의 세로형 쇼츠 영상을 생성합니다 (1080×1920, 30fps).
-
-**파이프라인:**
-
-```
-1. DALL-E 3 배경 이미지 생성 (옵션, 없으면 단색)
-         ↓
-2. Pillow 슬라이드 합성
-   인트로 → 헤드라인 → 포인트1 → 포인트2 → 포인트3 → 데이터(선택) → 아웃트로
-         ↓
-3. Google Cloud TTS (ko-KR-Wavenet-A) → gTTS 폴백
-         ↓
-4. ffmpeg zoompan — Ken Burns 효과로 슬라이드별 MP4 클립 생성
-         ↓
-5. ffmpeg xfade — 코너별 트랜지션으로 클립 연결
-         ↓
-6. BGM 믹싱 (assets/bgm.mp3, 볼륨 8%)
-         ↓
-7. SRT 자막 burn-in (흰 텍스트 + 반투명 검정 박스)
-         ↓
-출력: data/outputs/{date}_{slug}_shorts.mp4
-```
-
-**코너별 설정** (`templates/shorts_template.json`):
-
-| 코너 | 색상 | TTS 속도 | 트랜지션 | 특이사항 |
-|------|------|----------|---------|---------|
-| 쉬운세상 | 보라 `#7c3aed` | 1.0x | fade | — |
-| 숨은보물 | 블루 `#1d6fb0` | 1.05x | slideleft | — |
-| 바이브리포트 | 코럴 `#d85a30` | 1.1x | slideleft | — |
-| 팩트체크 | 레드 `#bf3a3a` | 1.0x | fade | 데이터 카드 강제 |
-| 한컷 | 골드 `#8a7a2e` | 1.0x | fade | 최대 20초 |
+| 플랫폼 | 스케줄 | 필요 키 |
+|--------|--------|---------|
+| Blogger | 09:00 | Google OAuth |
+| Instagram 카드 | 10:00 | Instagram Graph API |
+| Instagram 릴스 | 10:30 | Instagram Graph API |
+| YouTube Shorts | 10:35, 16:00 | YouTube Data API v3 |
+| X (Twitter) | 11:00 | X API v2 |
+| TikTok | 18:00 | TikTok Content Posting API |
+| YouTube (긴 영상) | 20:00 | YouTube Data API v3 |
 
 ---
 
-## 배포 엔진 (LAYER 3)
+## 소설 파이프라인
 
-### `image_host.py`
+매주 월/목요일 09:00에 소설 에피소드를 자동 생성하고 블로그에 발행합니다.
 
-Instagram API는 공개 URL 이미지만 허용하므로 로컬 파일을 업로드합니다:
-- **ImgBB API** (기본): 무료 이미지 호스팅, `IMGBB_API_KEY` 필요
-- **로컬 HTTP 서버**: 개발/테스트용, `LOCAL_IMAGE_SERVER=true`
+```json
+{
+  "id": "my-novel",
+  "title": "소설 제목",
+  "genre": "SF",
+  "setting": "2087년 서울...",
+  "characters": [{"name": "주인공", "role": "탐정"}],
+  "episode_length": 2000,
+  "schedule": "mon,thu"
+}
+```
 
-### `instagram_bot.py`
-
-Instagram Graph API v19.0 흐름:
-1. `POST /media` — 미디어 컨테이너 생성
-2. `GET /media/{id}` — `FINISHED` 상태까지 폴링 (최대 2분)
-3. `POST /media_publish` — 컨테이너 발행
-
-### `x_bot.py`
-
-X API v2 + OAuth1 (`requests_oauthlib`):
-- 이전 트윗 ID를 `reply_to_id`로 넘겨 스레드 구성
-- 각 트윗 사이 1초 딜레이로 순서 보장
-
-### `tiktok_bot.py`
-
-TikTok Content Posting API v2 (Direct Post):
-1. `POST /v2/post/publish/video/init/` — 업로드 URL + `publish_id` 수령
-2. 청크 업로드
-3. `POST /v2/post/publish/status/fetch/` — 발행 완료 폴링
-
-### `youtube_bot.py`
-
-YouTube Data API v3:
-- 기존 `token.json` Google OAuth 재사용 (별도 인증 불필요)
-- 제목 끝에 `#Shorts` 자동 추가
-- `google-resumable-media`로 대용량 파일 청크 업로드
+파일 위치: config/novels/{novel_id}.json
 
 ---
 
-## 콘텐츠 코너
+## 수동 어시스트 모드
 
-| 코너 | 성격 | 글 길이 | 안전장치 |
-|------|------|---------|---------|
-| **쉬운세상** | 복잡한 이슈를 쉽게 해설 | 1,500–2,000자 | 자동 발행 |
-| **숨은보물** | 유용하지만 덜 알려진 정보 | 1,500–2,000자 | 자동 발행 |
-| **바이브리포트** | 트렌드·문화 분석 | 1,500–2,500자 | 자동 발행 |
-| **팩트체크** | [사실]/[의견]/[추정] 명시 검증 | 2,000–2,500자 | **수동 승인 필수** |
-| **한컷** | 시사 만평 + 짧은 코멘트 | 300–500자 | 자동 발행 |
+특정 URL의 콘텐츠를 기반으로 반자동으로 콘텐츠를 제작합니다.
 
-**자동 발행 차단 조건 (Telegram 수동 검토):**
-- 팩트체크 코너 전체
-- 암호화폐/투자/법률 위험 키워드 감지
-- 출처 2개 미만
-- 품질 점수 75점 미만
+1. 대시보드 > 수동모드 탭에서 URL 입력
+2. AI가 글 초안 + 이미지 프롬프트 생성
+3. Telegram으로 프롬프트 수신 → ChatGPT/Midjourney로 이미지 생성
+4. 생성된 이미지를 Telegram으로 전송 → 자동 조립 및 발행
 
 ---
 
 ## Telegram 명령어
 
-스케줄러 실행 중 Telegram 봇에 명령을 보낼 수 있습니다.
+### 기본 명령
 
-### 슬래시 명령
+| 명령어 | 기능 |
+|--------|------|
+| /status | 전체 현황 |
+| /pending | 발행 대기 글 목록 |
+| /approve [slug] | 발행 승인 |
+| /reject [slug] | 거부 |
+| /report | 성과 리포트 즉시 생성 |
+| /topics | 오늘 수집된 글감 |
+| /convert | 변환 엔진 즉시 실행 |
 
-| 명령 | 설명 |
-|------|------|
-| `/start` | 봇 소개 |
-| `/status` | 스케줄러 상태 + 오늘 발행 수 |
-| `/collect` | 즉시 트렌드 수집 |
-| `/publish` | 즉시 블로그 발행 |
-| `/convert` | 즉시 변환 파이프라인 실행 |
-| `/report` | 즉시 분석 리포트 |
-| `/pause` | 자동 스케줄 일시 중지 |
-| `/resume` | 자동 스케줄 재개 |
-| `/approve [번호]` | 수동 검토 글 승인 후 발행 |
-| `/reject [번호]` | 수동 검토 글 거부 |
-| `/images` | 이미지 제작 현황 |
-| `/imgbatch` | 이미지 프롬프트 배치 전송 |
-| `/help` | 명령어 목록 |
+### Shorts 명령
 
-### 자연어 명령 (`ANTHROPIC_API_KEY` 설정 시)
+| 명령어 | 기능 |
+|--------|------|
+| /shorts status | Shorts 현황 |
+| /shorts mode auto or semi | 생산 모드 전환 |
+| /shorts input | input/ 폴더 현황 |
+| /shorts character bao or zero | 캐릭터 강제 지정 |
+| /shorts upload [경로] | 영상 즉시 업로드 |
+| /shorts skip [id] | 특정 글 Shorts 제외 |
+| /shorts run | 즉시 실행 |
 
-```
-"오늘 발행된 글 목록 보여줘"
-"쇼츠 변환 다시 실행해줘"
-"이번 주 조회수 상위 3개 알려줘"
-```
+### 소설 명령
 
----
+| 명령어 | 기능 |
+|--------|------|
+| /novel_list | 소설 목록 |
+| /novel_gen [id] | 즉시 생성 |
+| /novel_status | 파이프라인 현황 |
 
-## OpenClaw AI 에이전트 연동
-
-이 프로젝트는 [OpenClaw](https://openclaw.ai) AI 에이전트와 함께 사용하도록 설계되었습니다.
-
-**에이전트 설정 파일 위치:**
-
-```
-~/.openclaw/agents/blog-writer/SOUL.md
-    역할, 글쓰기 원칙, Blogger-ready HTML 출력 조건
-
-~/.openclaw/workspace-blog-writer/templates/output_format.md
-    원고 출력 포맷 (섹션 구조 정의)
-```
-
-**AI 원고 출력 포맷** (`output_format.md` 기반):
-
-```
----TITLE---      제목 (SEO 키워드 포함, 클릭베이트 없음)
----META---       검색 설명 150자 이내
----SLUG---       URL 슬러그 (영문 소문자, 하이픈)
----TAGS---       태그 쉼표 구분
----CORNER---     코너명
----BODY---       Blogger-ready HTML 본문 (마크다운 금지)
----KEY_POINTS--- 핵심 3줄 (각 30자 이내, SNS/TTS용)
----COUPANG_KEYWORDS--- 쿠팡 검색 키워드
----SOURCES---    출처 URL 목록
----DISCLAIMER--- 면책 문구 (팩트체크 필수)
-```
-
-**HTML 본문 필수 구성요소:**
-- `<style>` 블록 맨 앞 (`.post-title` 숨김 포함)
-- eyebrow 배지 · h1 제목 + 부제 · 메타 정보
-- 섹션 트래커 (소문자 영문 앵커) · h3 소제목
-- pull quote · 데이터 카드/그리드 · balance-box (반론)
-- 출처 cite · 클로징 박스 · 태그 목록
-- 저자: `22B Labs · The 4th Path`
-
-OpenClaw 없이도 동작합니다 — 위 포맷에 맞춰 `data/originals/`에 파일을 직접 넣으면 파이프라인이 실행됩니다.
+자연어로도 제어 가능합니다 (Claude API 연동 시):
+"오늘 발행한 글 성과 알려줘", "AI 뉴스 주제로 글 써줘"
 
 ---
 
-## 배포 스케줄
-
-스케줄러 실행 시 매일 자동으로 실행됩니다 (`config/schedule.json`에서 시간 변경 가능):
+## 스케줄
 
 | 시간 | 작업 |
 |------|------|
-| 07:00 | 트렌드 수집 (collector_bot) |
-| 08:00 | AI 글 작성 트리거 (OpenClaw) |
-| 08:30 | 변환 파이프라인 (5개 포맷 동시 생성) |
-| 09:00 | 블로그 발행 (Blogger) |
-| 10:00 | 인스타그램 카드 게시 |
-| 11:00 | X 스레드 게시 |
-| 18:00 | TikTok 쇼츠 업로드 |
-| 20:00 | YouTube 쇼츠 업로드 |
-| 22:00 | 일간 분석 리포트 (Telegram) |
-| 일요일 22:30 | 주간 뉴스레터 + 종합 리포트 |
+| 07:00 | 트렌드 수집 |
+| 08:00 | AI 글쓰기 |
+| 08:30 | 변환 엔진 |
+| 09:00 | 블로그 발행 |
+| 10:00 | 인스타그램 카드 |
+| 10:30 | 인스타그램 릴스 |
+| 10:35 | YouTube Shorts 1차 |
+| 11:00 | X(Twitter) |
+| 16:00 | YouTube Shorts 2차 |
+| 18:00 | TikTok |
+| 20:00 | YouTube |
+| 22:00 | 일일 성과 리포트 |
+| 일요일 22:30 | 주간 성과 리포트 |
+| 월/목 09:00 | 소설 에피소드 생성 |
 
 ---
 
-## Phase 현황
+## 엔진 추상화
 
-### Phase 1A — 완료 ✅
-모든 핵심 봇 구현 완료. 블로그 자동 수집→작성→발행 파이프라인 작동.
-
-### Phase 1B — 코드 완료 ✅, API 키 설정 필요 ⚙️
-- [ ] `IMGBB_API_KEY` 발급 ([api.imgbb.com](https://api.imgbb.com/))
-- [ ] Facebook Developer App에서 `INSTAGRAM_ACCESS_TOKEN` / `INSTAGRAM_ACCOUNT_ID` 발급
-- [ ] X Developer Portal에서 API 키 4종 발급
-
-### Phase 2 — 코드 완료 ✅, 환경 설정 필요 ⚙️
-- [ ] `ffmpeg` 설치 및 PATH 등록
-- [ ] `GOOGLE_TTS_API_KEY` 발급 (또는 `gTTS` 무료 사용)
-- [ ] `TIKTOK_ACCESS_TOKEN` / `YOUTUBE_CHANNEL_ID` 발급
+| 기능 | 옵션 |
+|------|------|
+| 글쓰기 | openclaw (로컬, 무료) / claude / gemini / openai |
+| TTS | edge_tts (무료) / google_cloud / elevenlabs |
+| 이미지 | manual / openai (DALL-E) |
+| 영상 | local (FFmpeg) / seedance / runway |
 
 ---
 
-## 자주 묻는 질문
+## 개발 현황
 
-**Q. OpenClaw 없이도 사용할 수 있나요?**
-A. 봇 레이어(수집/변환/발행/분석)는 완전히 독립적으로 동작합니다. `data/originals/`에 지정된 포맷으로 원고 파일을 직접 넣으면 파이프라인이 실행됩니다. 다른 AI(GPT API, Gemini 등)로 글을 생성한 후 넣어도 됩니다.
-
-**Q. TTS 없이 쇼츠를 만들 수 있나요?**
-A. `GOOGLE_TTS_API_KEY` 없이도 `gTTS`(무료)로 폴백됩니다. 품질은 낮지만 비용 없이 동작합니다. `requirements.txt`에 `gTTS`가 포함되어 있습니다.
-
-**Q. DALL-E 없이 쇼츠를 만들 수 있나요?**
-A. `OPENAI_API_KEY`가 없으면 코너 색상 단색 배경으로 대체됩니다. 별도 조치 없이 자동으로 폴백됩니다.
-
-**Q. Blogger 외 다른 플랫폼을 사용할 수 있나요?**
-A. `publisher_bot.py`의 `publish_to_blogger()` 함수를 교체하면 WordPress REST API, 티스토리 등으로 변경 가능합니다.
-
-**Q. Windows가 아닌 환경에서 사용하려면?**
-A. `setup.bat` 대신 수동으로 venv 생성 후 패키지 설치, `scheduler.py`는 크로스 플랫폼 동작합니다. Windows 작업 스케줄러 등록 부분만 Linux cron 또는 macOS launchd로 대체하세요.
-
-**Q. 수집봇이 글감을 못 가져와요.**
-A. `config/sources.json`의 RSS URL 유효성을 확인하세요. Google Trends는 요청 제한이 걸릴 수 있습니다 — `logs/collector.log`에서 상세 오류를 확인하세요.
-
----
-
-## 기여 가이드
-
-PR과 이슈를 환영합니다.
-
-### 로컬 개발 환경
-
-```bash
-git clone https://github.com/sinmb79/blog-writer.git
-cd blog-writer
-python -m venv venv && venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env       # 값 채우기
-python scripts/download_fonts.py
-```
-
-### 브랜치 규칙
-
-```
-master      — 안정 버전
-feature/*   — 새 기능
-fix/*       — 버그 수정
-```
-
-### 코드 스타일
-
-- Python 3.10+, 타입 힌트 권장
-- 모듈별 `logger = logging.getLogger(__name__)` 사용
-- 환경 변수는 반드시 `.env`에서만 (`python-dotenv`)
-- **비밀값 하드코딩 절대 금지**
-
-### 보안 주의사항
-
-- `.env`, `token.json`, `credentials.json`은 `.gitignore`에 포함 — 절대 커밋하지 마세요
-- PR 전 `git diff --staged`로 비밀값이 포함되지 않았는지 반드시 확인하세요
+| Phase | 상태 | 내용 |
+|-------|------|------|
+| Phase 1A | 완료 | 블로그 자동화 기본 파이프라인 |
+| Phase 1B | 코드 완료 | Instagram, X 배포 (API 키 필요) |
+| Phase 2 | 코드 완료 | Shorts 변환, TikTok, YouTube |
+| Shorts Bot | 완료 | YouTube Shorts 자동 생산 파이프라인 |
+| 대시보드 | 완료 | React + FastAPI 웹 대시보드 |
+| 소설 파이프라인 | 완료 | 자동 소설 연재 |
+| 수동 어시스트 | 완료 | 반자동 콘텐츠 제작 |
 
 ---
 
 ## 라이선스
 
-MIT License — 자유롭게 사용·수정·배포 가능합니다.
-상업적 이용 시 브랜드명 "The 4th Path"와 "22B Labs"는 제거해 주세요.
+MIT License
 
 ---
 
-<p align="center">
-  <strong>The 4th Path</strong> · Independent Tech Media<br>
-  by <a href="https://github.com/sinmb79">22B Labs</a>
-</p>
+The 4th Path — 22B Labs
+AI 시대, 1인 미디어의 새로운 길

@@ -16,7 +16,7 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_DIR = BASE_DIR / 'config'

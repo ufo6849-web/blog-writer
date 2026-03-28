@@ -13,7 +13,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 BASE_DIR = Path(__file__).parent.parent
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path='D:/key/blog-writer.env.env')
 
 # novel/ 폴더 기준으로 BASE_DIR 설정
 BASE_DIR = Path(__file__).parent.parent.parent
