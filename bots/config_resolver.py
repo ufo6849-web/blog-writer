@@ -9,9 +9,12 @@ Missing API key → auto-downgrade to free alternative
 """
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Base directory of the project (one level up from bots/)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -107,10 +110,10 @@ class ConfigResolver:
         engine = self._load('config/engine.json')
 
         resolved = {
-            'writing':   self._resolve_engine('writing', profile, engine),
-            'tts':       self._resolve_engine('tts', profile, engine),
-            'video':     self._resolve_engine('video', profile, engine),
-            'image':     self._resolve_engine('image', profile, engine),
+            'writing':   self._resolve_engine('writing', profile),
+            'tts':       self._resolve_engine('tts', profile),
+            'video':     self._resolve_engine('video', profile),
+            'image':     self._resolve_engine('image', profile),
             'platforms': self._resolve_platforms(profile),
             'budget':    profile.get('budget', 'free'),
             'level':     profile.get('level', 'beginner'),
@@ -143,12 +146,17 @@ class ConfigResolver:
         env_var = ENGINE_API_KEY_MAP.get(engine_name)
         if env_var is None:
             # Unknown engine — treat as available (graceful degradation)
+            logger.warning(
+                "Unknown engine '%s': not in ENGINE_API_KEY_MAP or ENGINE_REGISTRY as local; "
+                "treating as available.",
+                engine_name,
+            )
             return True
 
         value = os.environ.get(env_var, '').strip()
         return len(value) > 0
 
-    def _resolve_engine(self, category: str, profile: dict, engine: dict) -> dict:
+    def _resolve_engine(self, category: str, profile: dict) -> dict:
         """
         Resolve the active engine for a category.
 
@@ -161,7 +169,13 @@ class ConfigResolver:
         Returns dict with 'provider' and 'auto_selected' flag.
         """
         budget = profile.get('budget', 'free')
-        candidate_list = BUDGET_ENGINE_MAP.get(budget, BUDGET_ENGINE_MAP['free']).get(category, [])
+        if budget not in BUDGET_ENGINE_MAP:
+            logger.warning(
+                "Invalid budget value '%s' from profile; falling back to 'free'.",
+                budget,
+            )
+            budget = 'free'
+        candidate_list = BUDGET_ENGINE_MAP[budget].get(category, [])
 
         # Determine user's preferred provider
         engines_section = profile.get('engines', {})
@@ -193,7 +207,10 @@ class ConfigResolver:
 
     def _resolve_platforms(self, profile: dict) -> list:
         """Return the list of target publishing platforms from user profile."""
-        return profile.get('platforms', [])
+        platforms = profile.get('platforms', [])
+        if not isinstance(platforms, list):
+            return [str(platforms)] if platforms else []
+        return platforms
 
 
 # ---------------------------------------------------------------------------
