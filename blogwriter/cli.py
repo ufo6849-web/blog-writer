@@ -309,10 +309,180 @@ def config_show():
 @app.command()
 def init():
     """설정 마법사 - 처음 설치 시 실행."""
-    console.print("\n[bold cyan]Blog Writer 설정 마법사[/bold cyan]")
-    console.print("PR 10에서 구현 예정입니다.\n")
-    console.print("현재는 config/user_profile.json을 직접 편집하세요.")
-    console.print(f"위치: {BASE_DIR / 'config' / 'user_profile.json'}")
+    console.print("\n[bold cyan]=== Blog Writer 설정 마법사 ===[/bold cyan]\n")
+    console.print("몇 가지 질문에 답하면 자동으로 설정이 완성됩니다.\n")
+
+    profile = {}
+
+    # Step 1: Budget
+    console.print("[bold]1. 예산 설정[/bold]")
+    console.print("   free   — API 키 없이 무료 도구만 사용")
+    console.print("   low    — OpenAI 키 정도만 있으면 사용 가능")
+    console.print("   medium — ElevenLabs TTS + AI 영상 사용")
+    console.print("   premium — 최고 품질 모든 엔진 사용")
+    budget = click.prompt(
+        "예산 선택",
+        type=click.Choice(['free', 'low', 'medium', 'premium']),
+        default='free'
+    )
+    profile['budget'] = budget
+
+    # Step 2: Level
+    console.print("\n[bold]2. 사용자 레벨[/bold]")
+    console.print("   beginner     — 처음 사용하는 분")
+    console.print("   intermediate — 어느 정도 익숙한 분")
+    console.print("   advanced     — 설정을 직접 다루는 분")
+    level = click.prompt(
+        "레벨 선택",
+        type=click.Choice(['beginner', 'intermediate', 'advanced']),
+        default='beginner'
+    )
+    profile['level'] = level
+
+    # Step 3: Platforms
+    console.print("\n[bold]3. 발행 플랫폼[/bold]")
+    console.print("어디에 콘텐츠를 올리실 건가요? (여러 개 선택 가능)")
+    platforms = []
+    platform_choices = [
+        ('youtube', 'YouTube (쇼츠)'),
+        ('tiktok',  'TikTok'),
+        ('instagram', 'Instagram (릴스)'),
+        ('x',       'X (트위터)'),
+        ('blog',    '블로그 (Blogger)'),
+    ]
+    for key, name in platform_choices:
+        if click.confirm(f"   {name}?", default=(key == 'youtube')):
+            platforms.append(key)
+
+    if not platforms:
+        platforms = ['youtube']  # default
+    profile['platforms'] = platforms
+
+    # Step 4: Services (free web clients)
+    console.print("\n[bold]4. 무료 서비스 설정[/bold]")
+    services = {}
+
+    if click.confirm("   ChatGPT Pro(Web) 사용 중이신가요? (글쓰기에 사용)", default=False):
+        services['openclaw'] = True
+        console.print("   [yellow]→ OpenClaw 에이전트를 ChatGPT에 등록해야 합니다[/yellow]")
+    else:
+        services['openclaw'] = False
+
+    if click.confirm("   Claude Max(Web) 사용 중이신가요?", default=False):
+        services['claude_web'] = True
+    else:
+        services['claude_web'] = False
+
+    profile['services'] = services
+
+    # Step 5: API Keys
+    console.print("\n[bold]5. API 키 설정[/bold]")
+    console.print("[dim]키를 지금 입력하면 .env 파일에 저장됩니다.[/dim]")
+    console.print("[dim]나중에 .env 파일을 직접 편집해도 됩니다.[/dim]\n")
+
+    env_updates = {}
+
+    api_key_prompts = [
+        ('OPENAI_API_KEY', 'OpenAI API 키 (GPT + TTS)', budget in ('low', 'medium', 'premium')),
+        ('ANTHROPIC_API_KEY', 'Anthropic API 키 (Claude)', budget in ('medium', 'premium')),
+        ('GEMINI_API_KEY', 'Google Gemini API 키 (Veo 영상)', budget in ('medium', 'premium')),
+        ('ELEVENLABS_API_KEY', 'ElevenLabs TTS 키', budget in ('medium', 'premium')),
+        ('KLING_API_KEY', 'Kling AI 영상 키 (무료 크레딧 있음)', True),
+        ('FAL_API_KEY', 'fal.ai API 키 (Seedance 2.0)', budget in ('medium', 'premium')),
+    ]
+
+    for env_key, description, suggested in api_key_prompts:
+        existing = os.environ.get(env_key, '')
+        if existing:
+            console.print(f"   [green]✓[/green] {description}: 이미 설정됨")
+            continue
+
+        if suggested or click.confirm(f"   {description} 입력하시겠어요?", default=False):
+            value = click.prompt(
+                f"   {env_key}",
+                default='',
+                show_default=False,
+                hide_input=True,
+            )
+            if value.strip():
+                env_updates[env_key] = value.strip()
+
+    # Step 6: Engine preferences
+    console.print("\n[bold]6. 엔진 설정 (선택 — 기본값: 자동)[/bold]")
+    profile['engines'] = {
+        'writing': {'provider': 'auto'},
+        'tts': {'provider': 'auto'},
+        'video': {'provider': 'auto'},
+        'image': {'provider': 'auto'},
+    }
+
+    if click.confirm("   엔진을 직접 지정하시겠어요? (아니면 자동)", default=False):
+        # Writing engine
+        console.print("\n   [bold]글쓰기 엔진:[/bold] openclaw, claude_web, claude, gemini, auto")
+        writing_eng = click.prompt("   글쓰기 엔진", default='auto')
+        profile['engines']['writing']['provider'] = writing_eng
+
+        # TTS engine
+        console.print("   [bold]TTS 엔진:[/bold] elevenlabs, openai_tts, edge_tts, auto")
+        tts_eng = click.prompt("   TTS 엔진", default='auto')
+        profile['engines']['tts']['provider'] = tts_eng
+
+    # Save profile
+    profile['_comment'] = '사용자 의도 설정 - bw init으로 생성/업데이트'
+    profile['_updated'] = __import__('datetime').datetime.now().strftime('%Y-%m-%d')
+
+    profile_path = BASE_DIR / 'config' / 'user_profile.json'
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        __import__('json').dumps(profile, ensure_ascii=False, indent=2),
+        encoding='utf-8'
+    )
+
+    # Update .env if new keys were entered
+    if env_updates:
+        _update_env_file(env_updates)
+
+    console.print("\n[bold green]✓ 설정 완료![/bold green]")
+    console.print(f"  user_profile.json 저장됨: {profile_path}")
+    if env_updates:
+        console.print(f"  .env 업데이트됨: {len(env_updates)}개 키")
+    console.print("\n다음 명령어로 시작하세요:")
+    console.print("  [cyan]bw doctor[/cyan]    — 설정 확인")
+    console.print("  [cyan]bw write[/cyan]     — 첫 글 작성")
+    console.print("  [cyan]bw status[/cyan]    — 시스템 현황\n")
+
+
+def _update_env_file(updates: dict) -> None:
+    """
+    Add or update key-value pairs in .env file.
+    Creates .env if it doesn't exist.
+    """
+    env_path = BASE_DIR / '.env'
+
+    # Read existing lines
+    existing_lines = []
+    if env_path.exists():
+        existing_lines = env_path.read_text(encoding='utf-8').splitlines()
+
+    # Update existing keys or append new ones
+    updated_keys = set()
+    new_lines = []
+    for line in existing_lines:
+        if '=' in line and not line.startswith('#'):
+            key = line.split('=', 1)[0].strip()
+            if key in updates:
+                new_lines.append(f'{key}={updates[key]}')
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+
+    # Append new keys
+    for key, value in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f'{key}={value}')
+
+    env_path.write_text('\n'.join(new_lines) + '\n', encoding='utf-8')
+    logger.info(f'[설정] .env 업데이트: {list(updates.keys())}')
 
 
 # Entry point
