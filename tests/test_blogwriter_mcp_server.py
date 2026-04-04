@@ -191,3 +191,88 @@ def test_blog_full_pipeline_orchestrates_without_publish(monkeypatch):
     assert result["selected_topic"]["topic"] == "AI Future Strategy"
     assert result["seo"]["seo_score"] == 88
     assert result["publish_result"] is None
+
+
+def test_blog_publish_routes_to_naver(monkeypatch):
+    called = {}
+
+    def fake_publish(article):
+        called["article"] = article
+        return True
+
+    monkeypatch.setattr(
+        server,
+        "naver_publisher_bot",
+        type("DummyNaver", (), {"publish": staticmethod(fake_publish)}),
+        raising=False,
+    )
+
+    result = asyncio.run(
+        server.blog_publish(
+            server.PublishInput(
+                title="Naver title",
+                content="<p>html</p>",
+                labels=["AI"],
+                corner="Insights",
+                platform="naver",
+            )
+        )
+    )
+
+    assert result["platform"] == "naver"
+    assert result["published"] is True
+    assert result["results"]["naver"]["published"] is True
+    assert called["article"]["title"] == "Naver title"
+
+
+def test_blog_publish_routes_to_all(monkeypatch):
+    calls = []
+
+    def fake_blogger_publish(article):
+        calls.append(("blogger", article["title"]))
+        return True
+
+    def fake_wordpress_publish(article):
+        calls.append(("wordpress", article["title"]))
+        return True
+
+    def fake_naver_publish(article):
+        calls.append(("naver", article["title"]))
+        return True
+
+    monkeypatch.setattr(server.publisher_bot, "publish", fake_blogger_publish)
+    monkeypatch.setattr(
+        server,
+        "wp_publisher_bot",
+        type("DummyWp", (), {"publish": staticmethod(fake_wordpress_publish)}),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        server,
+        "naver_publisher_bot",
+        type("DummyNaver", (), {"publish": staticmethod(fake_naver_publish)}),
+        raising=False,
+    )
+
+    result = asyncio.run(
+        server.blog_publish(
+            server.PublishInput(
+                title="All title",
+                content="<p>html</p>",
+                labels=["AI"],
+                corner="Insights",
+                platform="all",
+            )
+        )
+    )
+
+    assert result["platform"] == "all"
+    assert result["published"] is True
+    assert result["results"]["blogger"]["published"] is True
+    assert result["results"]["wordpress"]["published"] is True
+    assert result["results"]["naver"]["published"] is True
+    assert calls == [
+        ("blogger", "All title"),
+        ("wordpress", "All title"),
+        ("naver", "All title"),
+    ]

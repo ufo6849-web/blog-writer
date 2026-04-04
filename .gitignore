@@ -80,3 +80,4 @@ dashboard/frontend/node_modules/
 *.swo
 Thumbs.db
 .worktrees/
+.pytest_tmp/

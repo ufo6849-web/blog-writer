@@ -22,6 +22,7 @@ image_bot = importlib.import_module("bots.image_bot")
 linker_bot = importlib.import_module("bots.linker_bot")
 publisher_bot = importlib.import_module("bots.publisher_bot")
 wp_publisher_bot = importlib.import_module("bots.wp_publisher_bot")
+naver_publisher_bot = importlib.import_module("bots.naver_publisher_bot")
 writer_bot = importlib.import_module("bots.writer_bot")
 
 
@@ -86,7 +87,7 @@ class PublishInput(BaseModel):
     sources: list[dict] = Field(default_factory=list)
     quality_score: int = 100
     disclaimer: str = ""
-    platform: Literal["blogger", "wordpress", "both"] = "blogger"
+    platform: Literal["blogger", "wordpress", "both", "naver", "all"] = "blogger"
 
 
 class AnalyticsInput(BaseModel):
@@ -296,9 +297,15 @@ async def blog_publish(params: PublishInput) -> dict:
     publishers = {
         "blogger": publisher_bot.publish,
         "wordpress": wp_publisher_bot.publish,
+        "naver": naver_publisher_bot.publish,
     }
 
-    selected = ["blogger", "wordpress"] if params.platform == "both" else [params.platform]
+    if params.platform == "both":
+        selected = ["blogger", "wordpress"]
+    elif params.platform == "all":
+        selected = ["blogger", "wordpress", "naver"]
+    else:
+        selected = [params.platform]
     results = {}
     for platform in selected:
         success = publishers[platform](dict(article))

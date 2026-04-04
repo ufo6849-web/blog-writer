@@ -48,7 +48,7 @@ def _safe_slug(text: str) -> str:
     return slug or datetime.now().strftime('article-%Y%m%d-%H%M%S')
 
 
-def _build_prompt(topic_data: dict) -> tuple[str, str]:
+def _build_prompt(topic_data: dict, style_prefix: str = "") -> tuple[str, str]:
     topic = topic_data.get('topic', '').strip()
     corner = topic_data.get('corner', '쉬운세상').strip() or '쉬운세상'
     description = topic_data.get('description', '').strip()
@@ -60,6 +60,8 @@ def _build_prompt(topic_data: dict) -> tuple[str, str]:
         "반드시 아래 섹션 헤더 형식만 사용해 완성된 Blogger-ready HTML 원고를 출력하라. "
         "본문(BODY)은 HTML로 작성하고, KEY_POINTS는 3줄 이내로 작성한다."
     )
+    if style_prefix:
+        system = style_prefix + system
     prompt = f"""다음 글감을 바탕으로 한국어 블로그 원고를 작성해줘.
 
 주제: {topic}
@@ -107,20 +109,17 @@ def _build_prompt(topic_data: dict) -> tuple[str, str]:
 
 # ─── 핵심 로직 ───────────────────────────────────────
 
-def write_article(topic_data: dict, output_path: Path) -> dict:
+def generate_article(topic_data: dict, writer=None, style_prefix: str = "") -> dict:
     """
-    topic_data → EngineLoader 호출 → article dict 저장.
-    Returns: article dict (저장 완료)
+    topic_data → EngineLoader 호출 → article dict 생성.
+    Returns: article dict (저장 없음)
     Raises: RuntimeError — 글 작성 또는 파싱 실패 시
     """
     from engine_loader import EngineLoader
     from article_parser import parse_output
 
-    title = topic_data.get('topic', topic_data.get('title', ''))
-    logger.info(f"글 작성 시작: {title}")
-
-    system, prompt = _build_prompt(topic_data)
-    writer = EngineLoader().get_writer()
+    system, prompt = _build_prompt(topic_data, style_prefix=style_prefix)
+    writer = writer or EngineLoader().get_writer()
     raw_output = writer.write(prompt, system=system).strip()
 
     if not raw_output:
@@ -129,6 +128,20 @@ def write_article(topic_data: dict, output_path: Path) -> dict:
     article = parse_output(raw_output)
     if not article:
         raise RuntimeError(f'글쓰기 엔진 출력 파싱 실패 (앞 200자): {raw_output[:200]}')
+
+    return article
+
+
+def write_article(topic_data: dict, output_path: Path, writer=None, style_prefix: str = "") -> dict:
+    """
+    topic_data → EngineLoader 호출 → article dict 저장.
+    Returns: article dict (저장 완료)
+    Raises: RuntimeError — 글 작성 또는 파싱 실패 시
+    """
+    title = topic_data.get('topic', topic_data.get('title', ''))
+    logger.info(f"글 작성 시작: {title}")
+
+    article = generate_article(topic_data, writer=writer, style_prefix=style_prefix)
 
     article.setdefault('title', title)
     article['slug'] = article.get('slug') or _safe_slug(article['title'])
@@ -187,7 +200,7 @@ def run_pending(limit: int = 3) -> list[dict]:
     return results
 
 
-def run_from_topic(topic: str, corner: str = '쉬운세상') -> dict:
+def run_from_topic(topic: str, corner: str = '쉬운세상', style_prefix: str = "") -> dict:
     """
     직접 주제 문자열로 글 작성.
     Returns: article dict
@@ -206,10 +219,10 @@ def run_from_topic(topic: str, corner: str = '쉬운세상') -> dict:
         'source': '',
         'published_at': datetime.now().isoformat(),
     }
-    return write_article(topic_data, output_path)
+    return write_article(topic_data, output_path, style_prefix=style_prefix)
 
 
-def run_from_file(file_path: str) -> dict:
+def run_from_file(file_path: str, style_prefix: str = "") -> dict:
     """
     JSON 파일에서 topic_data를 읽어 글 작성.
     """
@@ -219,7 +232,7 @@ def run_from_file(file_path: str) -> dict:
     topic_file = Path(file_path)
     topic_data = json.loads(topic_file.read_text(encoding='utf-8'))
     output_path = originals_dir / topic_file.name
-    return write_article(topic_data, output_path)
+    return write_article(topic_data, output_path, style_prefix=style_prefix)
 
 
 # ─── CLI 진입점 ──────────────────────────────────────
